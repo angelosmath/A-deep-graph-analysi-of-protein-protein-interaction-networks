@@ -2,8 +2,8 @@ import pandas as pd
 
 class Mapping:
     def __init__(self):
-        self.mapping_path = '/home/angelosmath/MSc/thesis_final_last/gtf_parsing/Homo_sapiens_df.csv'
-        self.ppi_path = '/home/angelosmath/MSc/thesis_final_last/data/string/9606.physical.links.csv'
+        self.mapping_path = '/work/ke74dex/DGL/A-deep-graph-analysi-of-protein-protein-interaction-networks/gtf_parsing/Homo_sapiens_df.csv'
+        self.ppi_path = '/work/ke74dex/DGL/A-deep-graph-analysi-of-protein-protein-interaction-networks/data/string/9606.physical.links.csv'
     
     def mapping_dataframe(self):
         try:

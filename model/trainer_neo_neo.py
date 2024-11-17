@@ -35,34 +35,38 @@ def print_gpu_utilization():
 
 #========= Plot Functions
 
-def plot_metrics(train_metric_values, test_metric_values, metric_name, args):
+def plot_metrics(train_metric_values, test_metric_values, metric_name, args,outdir):
     epochs = range(1, args.epochs + 1)
+    metric_values=pd.DataFrame(columns=["Train",'Test'])
+    metric_values['Train']=train_metric_values
+    metric_values['Test']=test_metric_values
+    metric_values.to_csv(f'{outdir}/Metric_values.tsv',sep='\t',header=True,index=False)
     plt.figure()
     plt.plot(epochs, train_metric_values, label=f'Train', color='darkblue', marker='o')
-    plt.plot(epochs, test_metric_values, label=f'Test', color='red', marker='x')
+#    plt.plot(epochs, test_metric_values, label=f'Test', color='red', marker='x')
     plt.grid(True)
     plt.xlabel('Epochs')
     plt.ylabel(metric_name)
     #plt.title(f'{metric_name} over Epochs')
     plt.xticks(epochs)  # Set x-axis ticks to integer values of epochs
     plt.legend()
-    plt.savefig(f'{args.output_folder}/{metric_name.lower()}.png')
+    plt.savefig(f'{outdir}/{metric_name.lower()}.png')
 
-def plot_roc_curve(train_labels, train_scores, test_labels, test_scores, args):
+def plot_roc_curve(train_labels, train_scores, test_labels, test_scores, args,outdir):
     
     train_fpr, train_tpr, _ = roc_curve(train_labels, train_scores)
     test_fpr, test_tpr, _ = roc_curve(test_labels, test_scores)
 
     plt.figure()
     plt.plot(train_fpr, train_tpr, color='blue', lw=2, label='Train ROC curve')
-    plt.plot(test_fpr, test_tpr, color='darkorange', lw=2, label='Test ROC curve')
+ #   plt.plot(test_fpr, test_tpr, color='darkorange', lw=2, label='Test ROC curve')
     plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random classifier')
     plt.grid(False)
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     #plt.title('Receiver Operating Characteristic (ROC)')
     plt.legend(loc="lower right")
-    plt.savefig(f'{args.output_folder}/roc_curve.png')
+    plt.savefig(f'{outdir}/roc_curve.png')
 
 #=============  DGL graph handling
 
@@ -160,7 +164,7 @@ def create_train_test_graphs(original_graph, bridge_edges_arg, test_ratio=0.3):
 
 #======= Training loop
 
-def train(args, device, train_set, test_set, model, use_uva, fused_sampling, validation = None):
+def train(args, device, train_set, test_set, model, use_uva, fused_sampling, outdir,validation = None):
 
     train_g, train_reverse_eids, train_seed_edges = train_set
     
@@ -177,8 +181,7 @@ def train(args, device, train_set, test_set, model, use_uva, fused_sampling, val
         reverse_eids = train_reverse_eids if args.exclude_edges else None,
         negative_sampler=negative_sampler.Uniform(1),
     )
-
-    train_dataloader = DataLoader(
+    train_dataloader = DataLoader(  
         train_g,
         train_seed_edges,
         train_sampler,
@@ -207,13 +210,13 @@ def train(args, device, train_set, test_set, model, use_uva, fused_sampling, val
         reverse_eids = test_reverse_eids if args.exclude_edges else None,
         negative_sampler=negative_sampler.Uniform(1),
     )
-
+    print (test_g.num_edges())
     test_dataloader = DataLoader(
         test_g,
         test_seed_edges,
         test_sampler,
         device=device,
-        batch_size=args.train_batch_size,
+        batch_size=test_g.num_edges(),
         shuffle=True,
         drop_last=False,
         num_workers=0,
@@ -274,9 +277,7 @@ def train(args, device, train_set, test_set, model, use_uva, fused_sampling, val
         test_loss = 0
         test_num_batches = 0
 
-        for it, (input_nodes, pair_graph, neg_pair_graph, blocks) in enumerate(
-            train_dataloader
-        ):
+        for it, (input_nodes, pair_graph, neg_pair_graph, blocks) in enumerate(train_dataloader):
             x = blocks[0].srcdata["feat"]
 
             neg_examples = set(zip(neg_pair_graph.edges()[0].cpu().numpy(), neg_pair_graph.edges()[1].cpu().numpy()))
@@ -310,15 +311,31 @@ def train(args, device, train_set, test_set, model, use_uva, fused_sampling, val
 
             train_scores.extend(score.detach().cpu().numpy())
             train_labels.extend(labels)
-            
             train_num_batches += 1
-        
-        with torch.no_grad():
-           model.eval()
 
-           for it, (input_nodes, pair_graph, neg_pair_graph, blocks) in enumerate(
-            test_dataloader
-            ):
+        train_epoch_accuracies.append(train_accuracy / train_num_batches)
+        train_epoch_sensitivities.append(train_sensitivity / train_num_batches)
+        train_epoch_specificities.append(train_specificity / train_num_batches)
+        train_epoch_precisions.append(train_precision / train_num_batches)
+        train_epoch_f1s.append(train_f1 / train_num_batches)
+        train_epoch_recalls.append(train_recall / train_num_batches)
+        train_losses.append(train_loss / train_num_batches)
+        end_epoch_time = time.time()
+        
+        train_roc_auc = roc_auc_score(train_labels, train_scores)
+        train_roc_aucs.append(train_roc_auc)
+        print(f"\nEpoch {epoch:05d} Time:{(end_epoch_time - start_epoch_time):.4f}s \n"
+            f"\nTraining Data: \nLoss: {train_loss / train_num_batches:.4f}"
+            f"\nAccuracy: {train_accuracy / train_num_batches:.4f} \nSensitivity: {train_sensitivity / train_num_batches:.4f}"
+            f"\nSpecificity: {train_specificity / train_num_batches:.4f} \nPrecision: {train_precision / train_num_batches:.4f}"
+            f"\nF1 Score: {train_f1 / train_num_batches:.4f} \nRecall: {train_recall / train_num_batches:.4f}"
+            f"\nROC AUC: {train_roc_auc:.4f}"  # Print training ROC AUC
+            )
+        
+    with torch.no_grad():
+        model.eval()
+
+        for it, (input_nodes, pair_graph, neg_pair_graph, blocks) in enumerate(test_dataloader):
 
             neg_examples = set(zip(neg_pair_graph.edges()[0].cpu().numpy(), neg_pair_graph.edges()[1].cpu().numpy()))
 
@@ -339,34 +356,24 @@ def train(args, device, train_set, test_set, model, use_uva, fused_sampling, val
             loss = F.binary_cross_entropy_with_logits(score, labels)
             test_loss += loss.item()
 
-            predictions = torch.round(torch.sigmoid(score)).cpu().numpy()
-            labels = labels.cpu().numpy()
+        predictions = torch.round(torch.sigmoid(score)).cpu().numpy()
+        labels = labels.cpu().numpy()
 
-            test_accuracy += accuracy_score(labels, predictions)
-            test_sensitivity += recall_score(labels, predictions)
-            test_specificity += recall_score(labels, predictions, pos_label=0)
-            test_precision += precision_score(labels, predictions)
-            test_f1 += f1_score(labels, predictions)
-            test_recall += recall_score(labels, predictions)
+        test_accuracy += accuracy_score(labels, predictions)
+        test_sensitivity += recall_score(labels, predictions)
+        test_specificity += recall_score(labels, predictions, pos_label=0)
+        test_precision += precision_score(labels, predictions)
+        test_f1 += f1_score(labels, predictions)
+        test_recall += recall_score(labels, predictions)
 
-            test_scores.extend(score.detach().cpu().numpy())
-            test_labels.extend(labels)
-            
-            test_num_batches += 1
+        test_scores.extend(score.detach().cpu().numpy())
+        test_labels.extend(labels)
+        
+        test_num_batches += 1
 
-        train_roc_auc = roc_auc_score(train_labels, train_scores)
         test_roc_auc = roc_auc_score(test_labels, test_scores)
         
-        train_roc_aucs.append(train_roc_auc)
         test_roc_aucs.append(test_roc_auc)
-
-        train_epoch_accuracies.append(train_accuracy / train_num_batches)
-        train_epoch_sensitivities.append(train_sensitivity / train_num_batches)
-        train_epoch_specificities.append(train_specificity / train_num_batches)
-        train_epoch_precisions.append(train_precision / train_num_batches)
-        train_epoch_f1s.append(train_f1 / train_num_batches)
-        train_epoch_recalls.append(train_recall / train_num_batches)
-        train_losses.append(train_loss / train_num_batches)
 
         test_epoch_accuracies.append(test_accuracy / test_num_batches)
         test_epoch_sensitivities.append(test_sensitivity / test_num_batches)
@@ -376,55 +383,49 @@ def train(args, device, train_set, test_set, model, use_uva, fused_sampling, val
         test_epoch_recalls.append(test_recall / test_num_batches)
         test_losses.append(test_loss / test_num_batches)
 
-        end_epoch_time = time.time()
+        print (
+                f"\nTest Data: \nLoss: {test_loss / test_num_batches:.4f}"
+                f"\nAccuracy: {test_accuracy / test_num_batches:.4f} \nSensitivity: {test_sensitivity / test_num_batches:.4f}"
+                f"\nSpecificity: {test_specificity / test_num_batches:.4f} \nPrecision: {test_precision / test_num_batches:.4f}"
+                f"\nF1 Score: {test_f1 / test_num_batches:.4f} \nRecall: {test_recall / test_num_batches:.4f}"
+                f"\nROC AUC: {test_roc_auc:.4f}"  # Print test ROC AUC
 
-        print(f"\nEpoch {epoch:05d} Time:{(end_epoch_time - start_epoch_time):.4f}s \n"
-              f"\nTraining Data: \nLoss: {train_loss / train_num_batches:.4f}"
-              f"\nAccuracy: {train_accuracy / train_num_batches:.4f} \nSensitivity: {train_sensitivity / train_num_batches:.4f}"
-              f"\nSpecificity: {train_specificity / train_num_batches:.4f} \nPrecision: {train_precision / train_num_batches:.4f}"
-              f"\nF1 Score: {train_f1 / train_num_batches:.4f} \nRecall: {train_recall / train_num_batches:.4f}"
-              f"\nROC AUC: {train_roc_auc:.4f}"  # Print training ROC AUC
-              f"\nTest Data: \nLoss: {test_loss / test_num_batches:.4f}"
-              f"\nAccuracy: {test_accuracy / test_num_batches:.4f} \nSensitivity: {test_sensitivity / test_num_batches:.4f}"
-              f"\nSpecificity: {test_specificity / test_num_batches:.4f} \nPrecision: {test_precision / test_num_batches:.4f}"
-              f"\nF1 Score: {test_f1 / test_num_batches:.4f} \nRecall: {test_recall / test_num_batches:.4f}"
-              f"\nROC AUC: {test_roc_auc:.4f}"  # Print test ROC AUC
-              )
+        )
 
 
     
 
     test_predictions = torch.round(torch.sigmoid(torch.tensor(test_scores))).cpu().detach().numpy()
-    conf_matrix = confusion_matrix(test_labels, test_predictions)
+  #  conf_matrix = confusion_matrix(test_labels, test_predictions)
 
-    plt.figure(figsize=(6, 6))
-    plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
-    #plt.title('Confusion Matrix')
-    plt.colorbar()
-    tick_marks = np.arange(2)
-    plt.xticks(tick_marks, ['Negative', 'Positive'], rotation=45)
-    plt.yticks(tick_marks, ['Negative', 'Positive'])
-
-    thresh = conf_matrix.max() / 2.
-    for i, j in itertools.product(range(conf_matrix.shape[0]), range(conf_matrix.shape[1])):
-        plt.text(j, i, format(conf_matrix[i, j], 'd'),
-                    horizontalalignment="center",
-                    color="white" if conf_matrix[i, j] > thresh else "black")
-
-    plt.tight_layout()
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
-    plt.savefig(f'{args.output_folder}/confusion_matrix.png')
-    plt.close()
-
-    plot_metrics(train_losses, test_losses, 'Loss (BCE with logits)', args)
-    plot_metrics(train_epoch_accuracies, test_epoch_accuracies, 'Accuracy', args)
-    plot_metrics(train_epoch_sensitivities, test_epoch_sensitivities, 'Sensitivity', args)
-    plot_metrics(train_epoch_specificities, test_epoch_specificities, 'Specificity', args)
-    plot_metrics(train_epoch_precisions, test_epoch_precisions, 'Precision', args)
-    plot_metrics(train_epoch_f1s, test_epoch_f1s, 'F1 Score', args)
-    plot_metrics(train_epoch_recalls, test_epoch_recalls, 'Recall', args)
-    plot_roc_curve(train_labels, train_scores, test_labels, test_scores, args)
+#    plt.figure(figsize=(6, 6))
+#    plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
+#    #plt.title('Confusion Matrix')
+#    plt.colorbar()
+#    tick_marks = np.arange(2)
+#    plt.xticks(tick_marks, ['Negative', 'Positive'], rotation=45)
+#    plt.yticks(tick_marks, ['Negative', 'Positive'])
+#
+#    thresh = conf_matrix.max() / 2.
+#    for i, j in itertools.product(range(conf_matrix.shape[0]), range(conf_matrix.shape[1])):
+#        plt.text(j, i, format(conf_matrix[i, j], 'd'),
+#                    horizontalalignment="center",
+#                    color="white" if conf_matrix[i, j] > thresh else "black")
+#
+#    plt.tight_layout()
+#    plt.ylabel('True label')
+#    plt.xlabel('Predicted label')
+#    plt.savefig(f'{outdir}/confusion_matrix.png')
+#    plt.close()
+#
+    #plot_metrics(train_losses, test_losses, 'Loss (BCE with logits)', args,outdir)
+    #plot_metrics(train_epoch_accuracies, test_epoch_accuracies, 'Accuracy', args,outdir)
+    #plot_metrics(train_epoch_sensitivities, test_epoch_sensitivities, 'Sensitivity', args,outdir)
+    #plot_metrics(train_epoch_specificities, test_epoch_specificities, 'Specificity', args,outdir)
+    #plot_metrics(train_epoch_precisions, test_epoch_precisions, 'Precision', args,outdir)
+    #plot_metrics(train_epoch_f1s, test_epoch_f1s, 'F1 Score', args,outdir)
+    #plot_metrics(train_epoch_recalls, test_epoch_recalls, 'Recall', args,outdir)
+    #plot_roc_curve(train_labels, train_scores, test_labels, test_scores, args,outdir)
     
     train_metrics = {
         "Accuracy": train_epoch_accuracies,
@@ -451,7 +452,7 @@ def train(args, device, train_set, test_set, model, use_uva, fused_sampling, val
     train_metrics_df = pd.DataFrame(train_metrics)
     test_metrics_df = pd.DataFrame(test_metrics)
 
-    metrics_dir = os.path.join(args.output_folder, 'metrics')
+    metrics_dir = os.path.join(outdir, 'metrics')
     if not os.path.exists(metrics_dir):
         os.makedirs(metrics_dir)
 
@@ -515,11 +516,12 @@ def parse_args():
     return parser.parse_args()
 
 def main(args):
+    outdir=args.output_folder if args.output_folder[-1]!='/' else args.output_folder[:-1]
 
-    if not os.path.exists(args.output_folder):
-        os.mkdir(args.output_folder)
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
     else:
-        print(f"Directory {args.output_folder} already exists. Using the existing directory.")
+        print(f"Directory {outdir} already exists. Using the existing directory.")
 
     print("Loading data...")
     g, _ = dgl.load_graphs(args.training_graph)
@@ -566,6 +568,7 @@ def main(args):
         train_set,
         test_set,
         model,
+        outdir=outdir,
         use_uva = False,
         fused_sampling = False,
         validation = None
@@ -576,9 +579,9 @@ def main(args):
     node_emb = model.inference(g, device, args.train_batch_size)
     node_emb = node_emb.detach()
     node_emb = node_emb.cpu().numpy()
-    np.save(f'{args.output_folder}/embeddings.npy', node_emb)
+    np.save(f'{outdir}/embeddings.npy', node_emb)
 
-    torch.save(model.state_dict(), f'{args.output_folder}/model.pth')
+    torch.save(model.state_dict(), f'{outdir}/model.pth')
 
     print('Done')
 

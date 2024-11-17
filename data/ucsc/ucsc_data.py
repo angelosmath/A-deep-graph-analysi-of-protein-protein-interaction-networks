@@ -38,11 +38,21 @@ class UCSC_pplink:
 
         #df = df.iloc[:, :3]
         df.to_csv('gg_ppi.csv', index=False)
+    def from_pandas_dataframe(self,):
+        df=pd.read_csv(self.output_filename,sep='\t',header=None,index_col=None, compression='gzip')
+        df.columns=["gene1", "gene2", "linkTypes", "pairCount", "oppCount", "docCount", "dbList", "minResCount", "snippet", "context"]
+        df = df.loc[~df['gene1'].str.isdigit() & ~df['gene2'].str.isdigit()]
+
+        # Keep only ppi relations
+        df = df[df['linkTypes'] == 'ppi']
+
+        #df = df.iloc[:, :3]
+        df.to_csv('gg_ppi.csv', index=False)
 
 def main():
     gglink = UCSC_pplink()
     gglink.download_pplink()
     gglink.to_dataframe()
-
+    #gglink.from_pandas_dataframe()
 if __name__ == "__main__":
     main()

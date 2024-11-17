@@ -113,7 +113,7 @@ class Preprocessing:
         print(f"Bridge edges set saved to: {self.pkl_folder}")
 
     def louvain_gridsearch(self):
-        resolution_values = np.linspace(0, 2, 21)
+        resolution_values = np.linspace(0, 2, 1)
         mean_community_sizes = []
         singletons_count = []
         modularity_values = []
@@ -642,12 +642,12 @@ class Preprocessing:
             print('All the nodes has at least one edge')
         else:
             print('The graph contain nodes with zero degree')
-        adj_matrix = self.g.adjacency_matrix().to_dense()
-        is_symmetric = np.allclose(adj_matrix, adj_matrix.T)
-        if not is_symmetric:
-            print("The graph is directed")
-        else:
-            print("The graph is undirected")
+    #    adj_matrix = self.g.adjacency_matrix().to_dense()
+    #    is_symmetric = np.allclose(adj_matrix, adj_matrix.T)
+    #    if not is_symmetric:
+    #        print("The graph is directed")
+    #    else:
+    #        print("The graph is undirected")
         print(f"Number of nodes: {self.g.number_of_nodes()}")
         print(f"Number of edges: {self.g.number_of_edges()}")
         print(f"Density: {nx.density(G)}")
