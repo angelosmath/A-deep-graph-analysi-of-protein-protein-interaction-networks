@@ -12,7 +12,7 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 
 # URL of the file
-url = 'https://mips.helmholtz-muenchen.de/corum/download/releases/current/humanComplexes.txt.zip'
+url = 'https://mips.helmholtz-muenchen.de/corum/download/humanComplexes.txt.zip'
 zip_filename = 'humanComplexes.txt.zip'
 txt_filename = 'humanComplexes.txt'
 
