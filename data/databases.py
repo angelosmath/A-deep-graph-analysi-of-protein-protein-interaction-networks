@@ -33,8 +33,8 @@ class CorumDb:
 
     # Older version URL. Access to version 5 only by API.
     # URL: https://mips.helmholtz-muenchen.de/corum/download/releases/current/humanComplexes.txt.zip
-    FILENAME: str = "humanComplexes.txt"  # from humanComplexes.txt.zip file
-    OUTPUT_CSV: str = "human_complexes.csv"
+    COMPLEXES_FILENAME: str = "humanComplexes.txt"  # from humanComplexes.txt.zip file
+    COMPLEXES_OUTPUT_CSV: str = "human_complexes.csv"
 
 
 @dataclass
@@ -43,4 +43,11 @@ class NegatomeDb:
 
     # Accessible only via API, and copy to a text file
     # URL: http://mips.helmholtz-muenchen.de/proj/ppi/negatome/
-    PPI_FILENAME: str = "negatome_2.csv"
+    NEGATIVE_PPI_FILENAME: str = "negatome_2.csv"
+
+
+@dataclass
+class EnsemblDb:
+    """Class for Ensemle GTF(Gene Tranfer File) for Homo Sapiens"""
+    GTF_DOWNLOAD_URL = 'http://ftp.ensembl.org/pub/release-104/gtf/homo_sapiens/Homo_sapiens.GRCh38.104.gtf.gz'
+    GTF_FILENAME = 'Homo_sapiens.GRCh38.104.gtf.gz'
