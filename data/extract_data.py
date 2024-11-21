@@ -1,4 +1,4 @@
-"""Module containing information for input DBs."""
+"""Module containing functionalities for extracting input data from DBs."""
 
 import gzip
 import logging
