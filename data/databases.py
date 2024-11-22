@@ -9,9 +9,7 @@ from pydantic import FileUrl
 class StringDb:
     """Class for StringDB related input."""
 
-    PPI_DOWNLOADS_URL: str = (
-        "https://stringdb-downloads.org/download/protein.physical.links.v12.0"
-    )
+    PPI_DOWNLOADS_URL: str = "https://stringdb-downloads.org/download/protein.physical.links.v12.0"
     PPI_FILENAME: str = "9606.protein.physical.links.v12.0.txt.gz"
     PPI_URL: FileUrl = f"{PPI_DOWNLOADS_URL}/{PPI_FILENAME}"
     PPI_FILENAME_CSV: str = "9606.physical.links.csv"
@@ -48,6 +46,9 @@ class NegatomeDb:
 
 @dataclass
 class EnsemblDb:
-    """Class for Ensemle GTF(Gene Tranfer File) for Homo Sapiens"""
-    GTF_DOWNLOAD_URL = 'http://ftp.ensembl.org/pub/release-104/gtf/homo_sapiens/Homo_sapiens.GRCh38.104.gtf.gz'
-    GTF_FILENAME = 'Homo_sapiens.GRCh38.104.gtf.gz'
+    """Class for Ensembl GTF(Gene Tranfer File) for Homo Sapiens"""
+
+    GTF_DOWNLOAD_URL: FileUrl = (
+        "http://ftp.ensembl.org/pub/release-104/gtf/homo_sapiens/Homo_sapiens.GRCh38.104.gtf.gz"
+    )
+    GTF_FILENAMEs: str = "Homo_sapiens.GRCh38.104.gtf.gz"
