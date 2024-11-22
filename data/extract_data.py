@@ -1,8 +1,11 @@
 """Module containing functionalities for extracting input data from DBs."""
 
 import gzip
+import os
+import inspect
 from typing import ClassVar
 from urllib.request import urlretrieve
+from pathlib import Path
 
 import pandas as pd
 from pydantic import BaseModel, FileUrl
@@ -11,9 +14,52 @@ from data.databases import CorumDb, NegatomeDb, StringDb, UcscDb, EnsemblDb
 
 
 class Folder():
-    """Class managing the output files"""
+    """Class managing the output files."""
 
+    base_path: ClassVar = Path.cwd()
+    dga_folder: ClassVar = base_path.parent / "dga"
 
+    #@staticmethod
+    def _ensure_dir(self, path: Path) -> None:
+        """Ensure the necessary directory exists."""
+
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+
+    def _get_caller_class(self) -> str:
+        """Determine the class name of the calling method"""
+
+        stack = inspect.stack()
+        caller_frame = stack[2]
+        caller_class = caller_frame[0].f_globals.get('__name__', None)
+        return caller_class
+    
+    def get_path(self, filename: str) -> Path:
+        """Generates the full path for a file based on the caller class."""
+
+        self._ensure_dir(folder)
+        caller_class = self._get_caller_class()
+        
+        if caller_class == "Data":
+            folder = self.dga_folder / "data"
+        else:
+            return None
+        return folder / filename
+    
+    def save_dataframe(self, dataframe, filename: str, index: bool = False) -> Path:
+        """Save a DataFrame to a CSV file in the appropriate folder."""  
+        
+        file_path = self.get_path(filename)
+        dataframe.to_csv(file_path, index=index)
+        #print(f"Data saved to {file_path}")
+        return file_path
+
+    def list_files(self,caller: str) -> list:
+        """List all files in a speciffic folder"""
+
+        folder = self.data_folder if caller == "data" else self.other_folder
+        return [file for file in folder.iterdir() if file.is_file()]
+ 
 
 
 
@@ -25,6 +71,8 @@ class Data(BaseModel):
     corum_db: ClassVar = CorumDb
     negatome_db: ClassVar = NegatomeDb
     ensembl_db: ClassVar = EnsemblDb
+    folder_manager: ClassVar = Folder #save using this: self.folder_manager.save_dataframe(dataframe, "string_db_results.csv")
+
 
     @staticmethod
     def download_file(file_url: FileUrl, output_filename: str) -> str:
