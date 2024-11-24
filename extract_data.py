@@ -1,99 +1,59 @@
 """Module containing functionalities for extracting input data from DBs."""
 
 import gzip
-import inspect
 import os
-from pathlib import Path
+import pickle
+import subprocess
 from typing import ClassVar
 from urllib.request import urlretrieve
 
 import pandas as pd
+import numpy as np
 from pydantic import BaseModel, FileUrl
+from pathlib import Path
 
-from data.databases import CorumDb, EnsemblDb, NegatomeDb, StringDb, UcscDb
+from databases import CorumDb, EnsemblDb, NegatomeDb, StringDb, UcscDb, Gene2Vec
 
+from file_manager import Folder
 
-class Folder:
-    """Class managing the output files."""
-
-    base_path: ClassVar = Path.cwd()
-    dga_folder: ClassVar = base_path.parent / "dga"
-
-    # @staticmethod
-    def _ensure_dir(self, path: Path) -> None:
-        """Ensure the necessary directory exists."""
-
-        if not path.exists():
-            path.mkdir(parents=True, exist_ok=True)
-
-    def _get_caller_class(self) -> str:
-        """Determine the class name of the calling method"""
-
-        stack = inspect.stack()
-        caller_frame = stack[2]
-        caller_class = caller_frame[0].f_globals.get("__name__", None)
-        return caller_class
-
-    def get_path(self, filename: str) -> Path:
-        """Generates the full path for a file based on the caller class."""
-
-        self._ensure_dir(folder)
-        caller_class = self._get_caller_class()
-
-        if caller_class == "Data":
-            folder = self.dga_folder / "data"
-        else:
-            return None
-        return folder / filename
-
-    def save_dataframe(self, dataframe, filename: str, index: bool = False) -> Path:
-        """Save a DataFrame to a CSV file in the appropriate folder."""
-
-        file_path = self.get_path(filename)
-        dataframe.to_csv(file_path, index=index)
-        # print(f"Data saved to {file_path}")
-        return file_path
-
-    def list_files(self, caller: str) -> list:
-        """List all files in a speciffic folder"""
-
-        folder = self.data_folder if caller == "data" else self.other_folder
-        return [file for file in folder.iterdir() if file.is_file()]
 
 
 class Data(BaseModel):
-    """Class for extracting DBs' data to the required format."""
+    """Class for extracting processing DBs' data to the required format."""
 
     string_db: ClassVar = StringDb
     ucsc_db: ClassVar = UcscDb
     corum_db: ClassVar = CorumDb
     negatome_db: ClassVar = NegatomeDb
     ensembl_db: ClassVar = EnsemblDb
+    gene2vec_gh: ClassVar = Gene2Vec
     folder_manager: ClassVar = Folder  # save using this: self.folder_manager.save_dataframe(dataframe, "string_db_results.csv")
 
     @staticmethod
     def download_file(file_url: FileUrl, output_filename: str) -> str:
         """Download file from a given URL."""
-        if Path(output_filename).is_file():
-            print(f"{output_filename} already exists.")
-            return output_filename
+        target_path = Folder.get_path(output_filename)
+
+        if target_path.is_file():
+            print(f"{target_path} already exists.")
+            return target_path
 
         try:
-            print(f"Downloading from {file_url} to {output_filename}")
-            urlretrieve(str(file_url), output_filename)
+            print(f"Downloading from {file_url} to {target_path}")
+            Folder._ensure_dir(target_path.parent)  # Ensure the directory exists
+            urlretrieve(file_url, target_path)
         except Exception as e:
             raise Exception(f"Error downloading file: {e}")
 
-        return output_filename
+        return target_path
 
-    @property
-    def gtf_parsing(self) -> None:
+    def gtf_parsing(self) -> pd.DataFrame:
         """Retrieve GTF(Gene Tanfer File) for Homo Sapiens from Ensembl DB and extract them in a CSV file."""
         try:
-            filename = self.download_file(self.ensembl_db.PPI_URL, self.ensembl_db.PPI_FILENAME)
+            filename = self.download_file(self.ensembl_db.GTF_URL, self.ensembl_db.GTF_FILENAME)
 
             keys = ["seqname", "source", "feature", "start", "end", "score", "strand", "frame"]
-            with gzip.open(self.filename, "rt", encoding="utf-8") as f:
+            with gzip.open(filename, "rt", encoding="utf-8") as f:
                 lines = f.readlines()
                 ens_dict = {key: [None] * len(lines) for key in keys}
 
@@ -117,8 +77,12 @@ class Data(BaseModel):
             none_rows = raw_dataframe[raw_dataframe.isna().all(axis=1)]
             # print(f"Lines with only None values: {none_rows.shape[0]}")
 
+            if "protein_id" not in raw_dataframe.columns or "gene_name" not in raw_dataframe.columns:
+                print(f"[ERROR]: Missing expected columns in GTF DataFrame")
+                return pd.DataFrame()
+            
             dataframe = raw_dataframe.dropna(how="all")
-            dataframe.to_csv("ensembl_gtf_homosapiens.csv", index=False)
+            self.folder_manager.save_dataframe(dataframe, "ensembl_gtf_homosapiens.csv", index=False)
             print("GTF file parsed successfully")
 
             return dataframe
@@ -126,9 +90,10 @@ class Data(BaseModel):
         except Exception as e:
             print(f"[ERROR]: While processing data from Ensembl DB: {e}")
 
-    @property
     def extract_from_string_db(self) -> pd.DataFrame:
         """Retrieve data from STRING DB and extract them in a CSV file."""
+        #add mapping in the description
+        
         processed_lines = []
 
         try:
@@ -152,10 +117,16 @@ class Data(BaseModel):
             raise ValueError(f"No lines were selected from {self.string_db.PPI_FILENAME}.")
 
         dataframe = pd.DataFrame(processed_lines[1:], columns=processed_lines[0])
-        dataframe.to_csv("data/string_db_ID_interactions.csv", index=False)
+        #dataframe.to_csv("data/string_db_ID_interactions.csv", index=False)
+        self.folder_manager.save_dataframe(dataframe, "string_db_raw.csv")
 
         # mapping process
         gtf_dataframe = self.gtf_parsing()
+
+        if gtf_dataframe.empty: 
+            print("[ERROR]: GTF parsing failed, cannot proceed with mapping.")
+            return pd.DataFrame()
+        
         gtf_dataframe = gtf_dataframe[["protein_id", "gene_name"]]
         gtf_dataframe = gtf_dataframe.drop_duplicates()
         gtf_dataframe = gtf_dataframe.dropna()
@@ -177,12 +148,11 @@ class Data(BaseModel):
         )
         dataframe = dataframe[["gene_name_1", "gene_name_2", "combined_score"]]
         dataframe.columns = ["gene1", "gene2", "combined_score"]
-
+        self.folder_manager.save_dataframe(dataframe, filename = "string_db.csv")
         print("STRING DB data processed successfully.")
 
         return dataframe
 
-    @property
     def extract_from_ucsc_db(self) -> None:
         """Retrieve data from UCSC and extract them in a CSV file."""
         try:
@@ -216,7 +186,7 @@ class Data(BaseModel):
                 ~dataframe["gene1"].str.isdigit() & ~dataframe["gene2"].str.isdigit()
             ]
             dataframe = dataframe[dataframe["linkTypes"] == "ppi"]
-            dataframe.to_csv("gg_ppi.csv", index=False)
+            self.folder_manager.save_dataframe(dataframe, "ucsc_db.csv", index=False)
             print("UCSC data processed successfully.")
 
             return dataframe
@@ -224,7 +194,6 @@ class Data(BaseModel):
         except Exception as e:
             print(f"[ERROR]: While processing data from UCSC: {e}")
 
-    @property
     def extract_from_corum_db(self) -> None:
         """Extract data from Corum DB in a CSV file."""
         try:
@@ -252,8 +221,62 @@ class Data(BaseModel):
         except Exception as e:
             print(f"[ERROR]: While processing extracted file: {e}")
 
-    @property
     def extract_from_negatome_db(self):
         """Extract data from Negatome DB in a CSV file."""
 
+        #MAPPING!
+
         return None
+    
+    def extract_from_Gene2Vec_gh(self) -> None:
+        """Extract pre trained embeddings from Gene2Vec GitHub."""
+
+        try:
+            git_url = self.gene2vec_gh.GIT_LINK
+            embeddings_file = self.gene2vec_gh.EMB_PATH
+            repo_folder = Folder.get_path(self.gene2vec_gh.FOLDER)
+            output_pkl = self.gene2vec_gh.FILENAME
+
+            if not repo_folder.exists():
+                try:
+                    print(f"Using Git URL: {git_url}")
+                    print(f"Running: git clone {git_url} {repo_folder}")
+                    subprocess.run(["git", "clone", git_url, str(repo_folder)], check=True)
+                except subprocess.CalledProcessError as e:
+                    raise Exception(f"Error cloning repository: {e}")
+            else:
+                print(f"Gene2Vec repository already exists at {repo_folder}")
+
+            embedding_file_path = repo_folder / embeddings_file
+            if not embedding_file_path.exists():
+                raise FileNotFoundError(f"Embedding file not found at {embedding_file_path}. Check the repository structure.")
+
+            gene2vec_dict = {}
+            with open(embedding_file_path, "r") as file:
+                for line in file:
+                    parts = line.strip().split()
+                    gene_name = parts[0]
+                    values = np.array(parts[1:], dtype=np.float32)
+                    gene2vec_dict[gene_name] = values
+
+            pickle_path = Folder.get_path(output_pkl)
+            with open(pickle_path, "wb") as pkl_file:
+                pickle.dump(gene2vec_dict, pkl_file)
+
+            print(f"Gene2Vec embeddings saved as a pickle file to {pickle_path}")
+
+        except Exception as e:
+            print(f"[ERROR]: While processing Gene2Vec data: {e}")
+
+
+
+def main():
+    data = Data()
+    #data.extract_from_string_db()
+    #data.extract_from_ucsc_db()
+    data.extract_from_Gene2Vec_gh()
+
+
+if __name__ == "__main__":
+    main()
+

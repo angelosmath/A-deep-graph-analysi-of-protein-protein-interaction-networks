@@ -1,7 +1,6 @@
 """Module containing information for input DBs."""
 
 from dataclasses import dataclass
-
 from pydantic import FileUrl
 
 
@@ -39,8 +38,9 @@ class CorumDb:
 class NegatomeDb:
     """Class for Negatome DB related input."""
 
-    # Accessible only via API, and copy to a text file
+    # Accessible only via API and copy to a text file.
     # URL: http://mips.helmholtz-muenchen.de/proj/ppi/negatome/
+    
     NEGATIVE_PPI_FILENAME: str = "negatome_2.csv"
 
 
@@ -48,7 +48,19 @@ class NegatomeDb:
 class EnsemblDb:
     """Class for Ensembl GTF(Gene Tranfer File) for Homo Sapiens"""
 
-    GTF_DOWNLOAD_URL: FileUrl = (
+    GTF_URL: FileUrl = (
         "http://ftp.ensembl.org/pub/release-104/gtf/homo_sapiens/Homo_sapiens.GRCh38.104.gtf.gz"
     )
-    GTF_FILENAMEs: str = "Homo_sapiens.GRCh38.104.gtf.gz"
+    GTF_FILENAME: str = "Homo_sapiens.GRCh38.104.gtf.gz"
+
+
+@dataclass
+class Gene2Vec:
+    """Class for Gene2Vec pre trained embeddings."""
+    GIT_LINK: FileUrl = (
+        "https://github.com/jingcheng-du/Gene2vec.git"
+    )
+    EMB_PATH = "pre_trained_emb/gene2vec_dim_200_iter_9.txt"
+    FOLDER = "gene2vec"
+    FILENAME = "gene2vec_embeddings.pkl"    
+

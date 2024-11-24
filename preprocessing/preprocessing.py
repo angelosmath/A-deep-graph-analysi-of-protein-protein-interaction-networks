@@ -34,6 +34,7 @@ class Preprocessing:
         for folder in [self.plot_folder, self.csv_folder, self.pkl_folder, self.metrics_folder, self.gridsearch_folder, self.evaluation_folder]:
             if not os.path.exists(folder):
                 os.makedirs(folder)
+                
         if not os.path.exists(self.gene2vec_path):
             try:
                 os.system("git clone https://github.com/jingcheng-du/Gene2vec.git")
